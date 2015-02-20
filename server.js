@@ -12,6 +12,7 @@ var _ = require('lodash');
 var session = require('express-session');
 var passport = require('passport');
 var LocalStrategy = require('passport-local').Strategy;
+var compress = require('compression');
 
 var showSchema = new mongoose.Schema({
     _id: Number,
@@ -72,6 +73,7 @@ mongoose.connect('localhost');
 var app = express();
 
 app.set('port', process.env.PORT || 3000);
+app.use(compress());
 app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded());
@@ -79,8 +81,7 @@ app.use(cookieParser());
 app.use(session({ secret: 'keyboard cat' }));
 app.use(passport.initialize());
 app.use(passport.session())
-app.use(express.static(path.join(__dirname, 'public')));
-
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: 86400000 }));
 
 passport.serializeUser(function(user, done) {
     done(null, user.id);
@@ -135,6 +136,29 @@ app.use(function(req, res, next) {
         res.cookie('user', JSON.stringify(req.user));
     }
     next();
+});
+
+app.post('/api/subscribe', ensureAuthenticated, function(req, res, next) {
+    Show.findById(req.body.showId, function(err, show) {
+        if (err) return next(err);
+        show.subscribers.push(req.user.id);
+        show.save(function(err) {
+            if (err) return next(err);
+            res.send(200);
+        });
+    });
+});
+
+app.post('/api/unsubscribe', ensureAuthenticated, function(req, res, next) {
+    Show.findById(req.body.showId, function(err, show) {
+        if (err) return next(err);
+        var index = show.subscribers.indexOf(req.user.id);
+        show.subscribers.splice(index, 1);
+        show.save(function(err) {
+            if (err) return next(err);
+            res.send(200);
+        });
+    });
 });
 
 app.get('/api/shows', function(req, res, next) {
